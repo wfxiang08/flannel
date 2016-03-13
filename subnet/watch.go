@@ -34,17 +34,20 @@ func WatchLeases(ctx context.Context, sm Manager, network string, ownLease *Leas
 	var cursor interface{}
 
 	for {
+		// 1. 监控: Leases的变化
 		res, err := sm.WatchLeases(ctx, network, cursor)
 		if err != nil {
 			if err == context.Canceled || err == context.DeadlineExceeded {
 				return
 			}
 
+			// 正常情况下出错了，没关系，继续Watch
 			log.Errorf("Watch subnets: %v", err)
 			time.Sleep(time.Second)
 			continue
 		}
 
+		// 2. 发现有效的变化
 		cursor = res.Cursor
 
 		batch := []Event{}
@@ -55,6 +58,7 @@ func WatchLeases(ctx context.Context, sm Manager, network string, ownLease *Leas
 			batch = lw.reset(res.Snapshot)
 		}
 
+		// 3. 将获取的Events通过chan传递出去
 		if len(batch) > 0 {
 			receiver <- batch
 		}

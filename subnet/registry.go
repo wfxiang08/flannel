@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	// 这个说明了什么?
+	// 在部分项目中: 被依赖的文件直接放在Godeps中了，不是通过go get ./...来解析的
 	etcd "github.com/coreos/flannel/Godeps/_workspace/src/github.com/coreos/etcd/client"
 	"github.com/coreos/flannel/Godeps/_workspace/src/github.com/coreos/etcd/pkg/transport"
 	log "github.com/coreos/flannel/Godeps/_workspace/src/github.com/golang/glog"
@@ -38,13 +40,24 @@ var (
 
 type Registry interface {
 	getNetworkConfig(ctx context.Context, network string) (string, error)
+
+	// 获取整个网络中所有的Leases
 	getSubnets(ctx context.Context, network string) ([]Lease, uint64, error)
+
+	// 获取指定的sn对应的Lease
 	getSubnet(ctx context.Context, network string, sn ip.IP4Net) (*Lease, uint64, error)
+
+	// 创建Subnet
 	createSubnet(ctx context.Context, network string, sn ip.IP4Net, attrs *LeaseAttrs, ttl time.Duration) (time.Time, error)
+	// 更新
 	updateSubnet(ctx context.Context, network string, sn ip.IP4Net, attrs *LeaseAttrs, ttl time.Duration, asof uint64) (time.Time, error)
 	deleteSubnet(ctx context.Context, network string, sn ip.IP4Net) error
+
+	// watch
 	watchSubnets(ctx context.Context, network string, since uint64) (Event, uint64, error)
 	watchSubnet(ctx context.Context, network string, since uint64, sn ip.IP4Net) (Event, uint64, error)
+
+	// 获取多个网络(试验中)
 	getNetworks(ctx context.Context) ([]string, uint64, error)
 	watchNetworks(ctx context.Context, since uint64) (Event, uint64, error)
 }

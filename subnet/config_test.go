@@ -19,6 +19,12 @@ import (
 )
 
 func TestConfigDefaults(t *testing.T) {
+	// 问题:
+	// 1. Json Parse时的大小写有什么问题吗?
+	// 2. 概念: Network, Subnet
+	//    10.xx.0.0/24
+	//    10.xx.0.0/16
+	//    子网: 10.xx.0.0/8
 	s := `{ "network": "10.3.0.0/16" }`
 
 	cfg, err := ParseConfig(s)

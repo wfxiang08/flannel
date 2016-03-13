@@ -133,6 +133,9 @@ func MakeSubnetKey(sn ip.IP4Net) string {
 	return sn.StringSep(".", "-")
 }
 
+// 和Registry对应
+// Registry强调Subnet
+// 而: Subnet自己则强调: Lease的管理
 type Manager interface {
 	GetNetworkConfig(ctx context.Context, network string) (*Config, error)
 	AcquireLease(ctx context.Context, network string, attrs *LeaseAttrs) (*Lease, error)

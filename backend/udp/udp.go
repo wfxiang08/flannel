@@ -47,6 +47,7 @@ func New(sm subnet.Manager, extIface *backend.ExternalInterface) (backend.Backen
 }
 
 func (be *UdpBackend) RegisterNetwork(ctx context.Context, netname string, config *subnet.Config) (backend.Network, error) {
+	// 1. 注意匿名类的初始化
 	cfg := struct {
 		Port int
 	}{
@@ -54,6 +55,7 @@ func (be *UdpBackend) RegisterNetwork(ctx context.Context, netname string, confi
 	}
 
 	// Parse our configuration
+	// 2. 如果config中指定了Backend的配置，则使用指定的配置
 	if len(config.Backend) > 0 {
 		if err := json.Unmarshal(config.Backend, &cfg); err != nil {
 			return nil, fmt.Errorf("error decoding UDP backend config: %v", err)
@@ -65,6 +67,7 @@ func (be *UdpBackend) RegisterNetwork(ctx context.Context, netname string, confi
 		PublicIP: ip.FromIP(be.extIface.ExtAddr),
 	}
 
+	// 3. 获取Lease
 	l, err := be.sm.AcquireLease(ctx, netname, &attrs)
 	switch err {
 	case nil:

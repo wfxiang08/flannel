@@ -33,10 +33,12 @@ type Config struct {
 }
 
 func parseBackendType(be json.RawMessage) (string, error) {
+	// 匿名的JSON, 除了Type之外IDE其他字段暂时不考虑
 	var bt struct {
 		Type string
 	}
 
+	// 默认采用udp通信
 	if len(be) == 0 {
 		return "udp", nil
 	} else {

@@ -36,6 +36,9 @@ var (
 	errCanceled = errors.New("canceled")
 )
 
+//
+// Network 是 flannel中最核心的环节
+//
 type Network struct {
 	Name       string
 	Config     *subnet.Config
@@ -43,8 +46,8 @@ type Network struct {
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 
-	sm         subnet.Manager
-	bm         backend.Manager
+	sm         subnet.Manager  // 通过 registry 的管理，来实现了subnet的lease的管理
+	bm         backend.Manager // 和udp等相关
 
 	ipMasq     bool
 	bn         backend.Network
@@ -77,21 +80,25 @@ func wrapError(desc string, err error) error {
 func (n *Network) init() error {
 	var err error
 
+	// 1. 通过: Registry获取网络的配置
 	n.Config, err = n.sm.GetNetworkConfig(n.ctx, n.Name)
 	if err != nil {
 		return wrapError("retrieve network config", err)
 	}
 
+	// 2. 获取BackendType, 例如: udp
 	be, err := n.bm.GetBackend(n.Config.BackendType)
 	if err != nil {
 		return wrapError("create and initialize network", err)
 	}
 
+	// 3. 注册网络
 	n.bn, err = be.RegisterNetwork(n.ctx, n.Name, n.Config)
 	if err != nil {
 		return wrapError("register network", err)
 	}
 
+	// 4. 修改Node的iptables
 	if n.ipMasq {
 		err = setupIPMasq(n.Config.Network)
 		if err != nil {

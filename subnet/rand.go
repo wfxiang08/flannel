@@ -26,6 +26,7 @@ func init() {
 	rnd = rand.New(rand.NewSource(seed))
 }
 
+// 如何返回从: [lo, hi)之间的均匀分布的随机数
 func randInt(lo, hi int) int {
 	return lo + int(rnd.Int31n(int32(hi-lo)))
 }

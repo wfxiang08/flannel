@@ -99,6 +99,7 @@ func (n *network) Run(ctx context.Context) {
 
 	evts := make(chan []subnet.Event)
 
+	// 监听Leases的变化
 	wg.Add(1)
 	go func() {
 		subnet.WatchLeases(ctx, n.sm, n.name, n.SubnetLease, evts)
@@ -184,6 +185,9 @@ func configureIface(ifname string, ipn ip.IP4Net, mtu int) error {
 	return nil
 }
 
+// 观察到路由的变化，然后: setRoute/removeRoute
+// flannel 是如何工作的?
+//
 func (n *network) processSubnetEvents(batch []subnet.Event) {
 	for _, evt := range batch {
 		switch evt.Type {
