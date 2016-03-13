@@ -31,12 +31,14 @@ var (
 	ErrNoMoreTries = errors.New("subnet: no more tries")
 )
 
+// 每台物理机器都会有一个: PublicIP(节点之间的通信都通过PublicIP来进行通信)
 type LeaseAttrs struct {
 	PublicIP    ip.IP4
 	BackendType string          `json:",omitempty"`
 	BackendData json.RawMessage `json:",omitempty"`
 }
 
+// 获取一个子网信息
 type Lease struct {
 	Subnet     ip.IP4Net
 	Attrs      LeaseAttrs

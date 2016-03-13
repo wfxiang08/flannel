@@ -43,6 +43,9 @@ type IPTables struct {
 	path string
 }
 
+// IPTables如何交互呢?
+// 查找服务，获取path
+//
 func New() (*IPTables, error) {
 	path, err := exec.LookPath("iptables")
 	if err != nil {
@@ -64,6 +67,7 @@ func (ipt *IPTables) Exists(table, chain string, rulespec ...string) (bool, erro
 		cmd := append([]string{"-A", chain}, rulespec...)
 		return existsForOldIpTables(table, strings.Join(cmd, " "))
 	} else {
+		// 检查某个rulespec是否存在
 		cmd := append([]string{"-t", table, "-C", chain}, rulespec...)
 		err := ipt.run(cmd...)
 
@@ -139,6 +143,7 @@ func (ipt *IPTables) NewChain(table, chain string) error {
 // ClearChain flushed (deletes all rules) in the specifed table/chain.
 // If the chain does not exist, new one will be created
 func (ipt *IPTables) ClearChain(table, chain string) error {
+	// 新建一个Chain, 如果存在则Flush
 	err := ipt.NewChain(table, chain)
 
 	switch {
@@ -167,6 +172,7 @@ func (ipt *IPTables) run(args ...string) error {
 		Stderr: &stderr,
 	}
 
+	// 通过iptable这个命令来执行脚本
 	if err := cmd.Run(); err != nil {
 		return &Error{*(err.(*exec.ExitError)), stderr.String()}
 	}

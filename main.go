@@ -58,6 +58,8 @@ type CmdLineOpts struct {
 
 var opts CmdLineOpts
 
+// 设置Commandline的格式，添加各种: flags, flags ---> opts的变量
+//
 func init() {
 	flag.StringVar(&opts.etcdEndpoints, "etcd-endpoints", "http://127.0.0.1:4001,http://127.0.0.1:2379", "a comma-delimited list of etcd endpoints")
 	flag.StringVar(&opts.etcdPrefix, "etcd-prefix", "/coreos.com/network", "etcd prefix")
@@ -74,10 +76,15 @@ func init() {
 }
 
 func newSubnetManager() (subnet.Manager, error) {
+	// 远程或者本地的
 	if opts.remote != "" {
 		return remote.NewRemoteManager(opts.remote, opts.remoteCAFile, opts.remoteCertfile, opts.remoteKeyfile)
 	}
 
+	// 本地: 需要直连 etcd(配置文件)
+	// flanneld & 对应的就是LocalManager
+	// etcdEndpoints: 这个如何指定呢?
+	//
 	cfg := &subnet.EtcdConfig{
 		Endpoints: strings.Split(opts.etcdEndpoints, ","),
 		Keyfile:   opts.etcdKeyfile,
@@ -89,6 +96,10 @@ func newSubnetManager() (subnet.Manager, error) {
 	return subnet.NewLocalManager(cfg)
 }
 
+//
+//
+// 正常情况下，flanneld & (没有其他的参数)
+//
 func main() {
 	// glog will log to tmp files by default. override so all entries
 	// can flow into journald (if running under systemd)
@@ -97,6 +108,7 @@ func main() {
 	// now parse command line args
 	flag.Parse()
 
+	// 1. 似乎没有非 opt的参数
 	if flag.NArg() > 0 || opts.help {
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTION]...\n", os.Args[0])
 		flag.PrintDefaults()
@@ -110,6 +122,7 @@ func main() {
 
 	flagutil.SetFlagsFromEnv(flag.CommandLine, "FLANNELD")
 
+	// SubnetManager如何作用呢?
 	sm, err := newSubnetManager()
 	if err != nil {
 		log.Error("Failed to create SubnetManager: ", err)
@@ -131,11 +144,16 @@ func main() {
 			os.Exit(1)
 		}
 		log.Info("running as server")
+
+		// 服务
 		runFunc = func(ctx context.Context) {
 			remote.RunServer(ctx, sm, opts.listen, opts.remoteCAFile, opts.remoteCertfile, opts.remoteKeyfile)
 		}
 	} else {
+		// 现阶段正常模式:
+		// listen == ""， remote == ""
 		nm, err := network.NewNetworkManager(ctx, sm)
+
 		if err != nil {
 			log.Error("Failed to create NetworkManager: ", err)
 			os.Exit(1)
@@ -146,6 +164,7 @@ func main() {
 		}
 	}
 
+	// 等待程序结束
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -153,6 +172,7 @@ func main() {
 		wg.Done()
 	}()
 
+	// 主动接受系统消息
 	<-sigs
 	// unregister to get default OS nuke behaviour in case we don't exit cleanly
 	signal.Stop(sigs)

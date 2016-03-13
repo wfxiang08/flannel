@@ -22,6 +22,7 @@ import (
 	"github.com/coreos/flannel/pkg/ip"
 )
 
+// 网络的配置信息
 type Config struct {
 	Network     ip.IP4Net
 	SubnetMin   ip.IP4

@@ -33,17 +33,19 @@ const (
 
 var (
 	errInterrupted = errors.New("interrupted")
-	errCanceled    = errors.New("canceled")
+	errCanceled = errors.New("canceled")
 )
 
 type Network struct {
-	Name   string
-	Config *subnet.Config
+	Name       string
+	Config     *subnet.Config
 
 	ctx        context.Context
 	cancelFunc context.CancelFunc
+
 	sm         subnet.Manager
 	bm         backend.Manager
+
 	ipMasq     bool
 	bn         backend.Network
 }
@@ -68,6 +70,10 @@ func wrapError(desc string, err error) error {
 	return fmt.Errorf("failed to %v: %v", desc, err)
 }
 
+
+//
+// 如何初始化呢?
+//
 func (n *Network) init() error {
 	var err error
 
@@ -96,6 +102,7 @@ func (n *Network) init() error {
 	return nil
 }
 
+// 不停地重试，直到 init  完成
 func (n *Network) retryInit() error {
 	for {
 		err := n.init()
@@ -114,16 +121,19 @@ func (n *Network) retryInit() error {
 }
 
 func (n *Network) runOnce(extIface *backend.ExternalInterface, inited func(bn backend.Network)) error {
+	// 1. 初始化
 	if err := n.retryInit(); err != nil {
 		return errCanceled
 	}
 
+	// 2. 回调inited的函数，例如写入: /run/flannel/subnet.env, 然后再启动 Docker
 	inited(n.bn)
 
 	ctx, interruptFunc := context.WithCancel(n.ctx)
 
 	wg := sync.WaitGroup{}
 
+	// 任务1: bn继续自己正常的工作
 	wg.Add(1)
 	go func() {
 		n.bn.Run(ctx)
@@ -132,12 +142,15 @@ func (n *Network) runOnce(extIface *backend.ExternalInterface, inited func(bn ba
 
 	evts := make(chan subnet.Event)
 
+	// 任务2: bn继续自己正常的工作
 	wg.Add(1)
 	go func() {
+		// Watch Lease是干什么用的呢？
 		subnet.WatchLease(ctx, n.sm, n.Name, n.bn.Lease().Subnet, evts)
 		wg.Done()
 	}()
 
+	// 恢复: iptables的修改
 	defer func() {
 		if n.ipMasq {
 			if err := teardownIPMasq(n.Config.Network); err != nil {
@@ -151,6 +164,8 @@ func (n *Network) runOnce(extIface *backend.ExternalInterface, inited func(bn ba
 	dur := n.bn.Lease().Expiration.Sub(time.Now()) - renewMargin
 	for {
 		select {
+		// 不停地续约，如果自己挂了，续约就结束
+		// 只有不停地续约才能证明自己活着
 		case <-time.After(dur):
 			err := n.sm.RenewLease(n.ctx, n.Name, n.bn.Lease())
 			if err != nil {
@@ -182,6 +197,7 @@ func (n *Network) runOnce(extIface *backend.ExternalInterface, inited func(bn ba
 
 func (n *Network) Run(extIface *backend.ExternalInterface, inited func(bn backend.Network)) {
 	for {
+		// 永远运行下去，如果是: Interrupted, 那么继续；否则关闭
 		switch n.runOnce(extIface, inited) {
 		case errInterrupted:
 

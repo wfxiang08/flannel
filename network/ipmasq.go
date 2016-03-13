@@ -24,6 +24,11 @@ import (
 	"github.com/coreos/flannel/pkg/ip"
 )
 
+//
+// IP伪装: ip masquerade, 通过修改iptables 来修改路由
+//
+
+// 参数: 网络的IP
 func rules(ipn ip.IP4Net) [][]string {
 	n := ipn.String()
 
@@ -38,11 +43,14 @@ func rules(ipn ip.IP4Net) [][]string {
 }
 
 func setupIPMasq(ipn ip.IP4Net) error {
+	// 通过iptables来设置: IPMasq
 	ipt, err := iptables.New()
+
 	if err != nil {
 		return fmt.Errorf("failed to set up IP Masquerade. iptables was not found")
 	}
 
+	// 往iptables中添加POSTROUTING阶段的Rules
 	for _, rule := range rules(ipn) {
 		log.Info("Adding iptables rule: ", strings.Join(rule, " "))
 		err = ipt.AppendUnique("nat", "POSTROUTING", rule...)

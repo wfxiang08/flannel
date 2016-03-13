@@ -74,11 +74,13 @@ func newEtcdClient(c *EtcdConfig) (etcd.KeysAPI, error) {
 		CAFile:   c.CAFile,
 	}
 
+	// 创建Transport(主要是各种证书)
 	t, err := transport.NewTransport(tlsInfo)
 	if err != nil {
 		return nil, err
 	}
 
+	// 创建Client
 	cli, err := etcd.New(etcd.Config{
 		Endpoints: c.Endpoints,
 		Transport: t,
@@ -87,14 +89,18 @@ func newEtcdClient(c *EtcdConfig) (etcd.KeysAPI, error) {
 		return nil, err
 	}
 
+	// 创建API
 	return etcd.NewKeysAPI(cli), nil
 }
 
+// 基于: etcd的SubnetRegistry的实现
 func newEtcdSubnetRegistry(config *EtcdConfig, cliNewFunc etcdNewFunc) (Registry, error) {
 	r := &etcdSubnetRegistry{
 		etcdCfg:      config,
 		networkRegex: regexp.MustCompile(config.Prefix + `/([^/]*)(/|/config)?$`),
 	}
+
+	// cliNewFunc == nil, 则使用默认的: newEtcdClient
 	if cliNewFunc != nil {
 		r.cliNewFunc = cliNewFunc
 	} else {
@@ -102,6 +108,7 @@ func newEtcdSubnetRegistry(config *EtcdConfig, cliNewFunc etcdNewFunc) (Registry
 	}
 
 	var err error
+	// 根据: config创建到etcd的API
 	r.cli, err = r.cliNewFunc(config)
 	if err != nil {
 		return nil, err

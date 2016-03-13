@@ -67,11 +67,14 @@ func (c watchCursor) String() string {
 	return strconv.FormatUint(c.index, 10)
 }
 
+//  创建一个LocalManager
 func NewLocalManager(config *EtcdConfig) (Manager, error) {
+	// 1. 创建到一个etcd的api client
 	r, err := newEtcdSubnetRegistry(config, nil)
 	if err != nil {
 		return nil, err
 	}
+	// 2. 创建Local Manager
 	return newLocalManager(r), nil
 }
 
@@ -81,21 +84,25 @@ func newLocalManager(r Registry) Manager {
 	}
 }
 
+// 通过内部的 Registry 来获取网络的Config
 func (m *LocalManager) GetNetworkConfig(ctx context.Context, network string) (*Config, error) {
 	cfg, err := m.registry.getNetworkConfig(ctx, network)
 	if err != nil {
 		return nil, err
 	}
 
+	// 注意网络的配置
 	return ParseConfig(cfg)
 }
 
+// 根据当前的 PublicIP 获取一个有效的Lease
 func (m *LocalManager) AcquireLease(ctx context.Context, network string, attrs *LeaseAttrs) (*Lease, error) {
 	config, err := m.GetNetworkConfig(ctx, network)
 	if err != nil {
 		return nil, err
 	}
 
+	// 获取一个有效的子网信息
 	for i := 0; i < raceRetries; i++ {
 		l, err := m.tryAcquireLease(ctx, network, config, attrs.PublicIP, attrs)
 		switch err {
@@ -111,6 +118,10 @@ func (m *LocalManager) AcquireLease(ctx context.Context, network string, attrs *
 	return nil, errors.New("Max retries reached trying to acquire a subnet")
 }
 
+// 这个负载似乎有点点重呀
+// 一次把所有的Lease都读取到，然后批量返回
+// 如果机器在几百台以内似乎可以不考虑这个负担
+//
 func findLeaseByIP(leases []Lease, pubIP ip.IP4) *Lease {
 	for _, l := range leases {
 		if pubIP == l.Attrs.PublicIP {
@@ -122,6 +133,7 @@ func findLeaseByIP(leases []Lease, pubIP ip.IP4) *Lease {
 }
 
 func (m *LocalManager) tryAcquireLease(ctx context.Context, network string, config *Config, extIaddr ip.IP4, attrs *LeaseAttrs) (*Lease, error) {
+	// 1. 获取Subnets的信息
 	leases, _, err := m.registry.getSubnets(ctx, network)
 	if err != nil {
 		return nil, err
@@ -138,6 +150,8 @@ func (m *LocalManager) tryAcquireLease(ctx context.Context, network string, conf
 				// Not a reservation
 				ttl = subnetTTL
 			}
+
+			// 更新: subnet的TTL
 			exp, err := m.registry.updateSubnet(ctx, network, l.Subnet, attrs, ttl, 0)
 			if err != nil {
 				return nil, err
@@ -147,6 +161,7 @@ func (m *LocalManager) tryAcquireLease(ctx context.Context, network string, conf
 			l.Expiration = exp
 			return l, nil
 		} else {
+			// 子网不兼容了，需要重新获取: Lease
 			log.Infof("Found lease (%v) for current IP (%v) but not compatible with current config, deleting", l.Subnet, extIaddr)
 			if err := m.registry.deleteSubnet(ctx, network, l.Subnet); err != nil {
 				return nil, err
@@ -154,12 +169,15 @@ func (m *LocalManager) tryAcquireLease(ctx context.Context, network string, conf
 		}
 	}
 
+	// 2. 获取一个新的租约
 	// no existing match, grab a new one
 	sn, err := m.allocateSubnet(config, leases)
 	if err != nil {
 		return nil, err
 	}
 
+	// 3. 创建subnet
+	//    不能申请互时互斥，就像数据库一样，我先创建对象；如果已经存在再尝试新对象
 	exp, err := m.registry.createSubnet(ctx, network, sn, attrs, subnetTTL)
 	switch {
 	case err == nil:
@@ -175,6 +193,7 @@ func (m *LocalManager) tryAcquireLease(ctx context.Context, network string, conf
 	}
 }
 
+// 如何分配一个Subnet呢?
 func (m *LocalManager) allocateSubnet(config *Config, leases []Lease) (ip.IP4Net, error) {
 	log.Infof("Picking subnet in range %s ... %s", config.SubnetMin, config.SubnetMax)
 
@@ -182,27 +201,32 @@ func (m *LocalManager) allocateSubnet(config *Config, leases []Lease) (ip.IP4Net
 	sn := ip.IP4Net{IP: config.SubnetMin, PrefixLen: config.SubnetLen}
 
 OuterLoop:
+    // sn从最小的网络开始遍历(sn.Next), 如果不和当前的 leases冲突，则算是OK
 	for ; sn.IP <= config.SubnetMax && len(bag) < 100; sn = sn.Next() {
 		for _, l := range leases {
 			if sn.Overlaps(l.Subnet) {
 				continue OuterLoop
 			}
 		}
+		// bag的作用: 记录可用的网络
 		bag = append(bag, sn.IP)
 	}
 
 	if len(bag) == 0 {
 		return ip.IP4Net{}, errors.New("out of subnets")
 	} else {
+		// 随机找一个网络，减少不同的机器之间的冲突
 		i := randInt(0, len(bag))
 		return ip.IP4Net{IP: bag[i], PrefixLen: config.SubnetLen}, nil
 	}
 }
 
+// 删除Lease
 func (m *LocalManager) RevokeLease(ctx context.Context, network string, sn ip.IP4Net) error {
 	return m.registry.deleteSubnet(ctx, network, sn)
 }
 
+// 更新TTL
 func (m *LocalManager) RenewLease(ctx context.Context, network string, lease *Lease) error {
 	exp, err := m.registry.updateSubnet(ctx, network, lease.Subnet, &lease.Attrs, subnetTTL, 0)
 	if err != nil {
@@ -232,6 +256,7 @@ func getNextIndex(cursor interface{}) (uint64, error) {
 }
 
 func (m *LocalManager) leaseWatchReset(ctx context.Context, network string, sn ip.IP4Net) (LeaseWatchResult, error) {
+	// 获取当前的节点的 Lease
 	l, index, err := m.registry.getSubnet(ctx, network, sn)
 	if err != nil {
 		return LeaseWatchResult{}, err
